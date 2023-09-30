@@ -8,6 +8,8 @@ from dotenv import dotenv_values
 from redis import Redis
 from collections import OrderedDict
 from typing import Optional
+import requests
+import json
 import os
 
 
@@ -26,35 +28,48 @@ def get_database_connection() -> Redis:
     return _database
 
 
+def get_products(page=1, page_size=10):
+    crm_api_url = 'http://localhost:1337/api/products'
+    params = {
+        'pagination[page]': page,
+        'pagination[pageSize]': page_size,
+    }
+    response = requests.get(crm_api_url, params=params)
+    return (
+            json.loads(response.text)['data'],
+            json.loads(response.text)['meta']['pagination']['pageCount']
+        )
+
+
 def start(update: Update, context: CallbackContext) -> str:
+    page = 1
+    products, page_count = get_products(page=page)
+    while page_count - 1 > 0:
+        page += 1
+        page_count -= 1
+        products.extend(get_products(page=page))
+
     keyboard = [
-        [
-            InlineKeyboardButton('Option 1', callback_data='1'),
-            InlineKeyboardButton('Option 2', callback_data='2'),
-        ],
-        [InlineKeyboardButton('Option 3', callback_data='3')]
+        [InlineKeyboardButton(product['attributes']['title'], callback_data=product['id'])]
+        for product in products
     ]
+
     reply_markup = InlineKeyboardMarkup(keyboard)
     update.message.reply_text('Please choose:', reply_markup=reply_markup)
-    return 'ECHO'
+    return 'HANDLE_MENU'
 
 
 def button(update: Update, context: CallbackContext) -> str:
     query = update.callback_query
     query.answer()
     query.edit_message_text(text=f"Selected option: {query.data}")
-
-
-def echo(update: Update, context: CallbackContext) -> str:
-    user_reply = update.message.text
-    update.message.reply_text(text=user_reply)
-    return 'ECHO'
+    return 'START'
 
 
 def handle_users_reply(update: Update, context: CallbackContext) -> None:
     state_functions: dict = {
         'START': start,
-        'ECHO': button,
+        'BUTTON': button,
     }
 
     db: Redis = get_database_connection()
