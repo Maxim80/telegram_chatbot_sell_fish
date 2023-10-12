@@ -43,12 +43,14 @@ def get_response_from_strapi(page=1, page_size=10, product_id=None):
 
 
 def start(update: Update, context: CallbackContext) -> str:
-    page = 1
-    products, page_count = get_products(page=page)
+    products_info = get_response_from_strapi()
+    products = products_info['data']
+    page = products_info['meta']['pagination']['page']
+    page_count = page = products_info['meta']['pagination']['pageCount']
     while page_count - 1 > 0:
         page += 1
         page_count -= 1
-        products.extend(get_products(page=page))
+        products.extend(get_response_from_strapi(page=page)['data'])
 
     keyboard = [
         [InlineKeyboardButton(product['attributes']['title'], callback_data=product['id'])]
@@ -60,12 +62,12 @@ def start(update: Update, context: CallbackContext) -> str:
     return 'HANDLE_MENU'
 
 
-# def handle_menu(update: Update, context: CallbackContext) -> str:
-#     query = update.callback_query
-#     query.answer()
-#     user_selection = query.data
-#     query.edit_message_text(text=f"Selected option: {query.data}")
-#     return 'START'
+def handle_menu(update: Update, context: CallbackContext) -> str:
+    query = update.callback_query
+    query.answer()
+    user_selection = query.data
+    query.edit_message_text(text=f"Selected option: {query.data}")
+    return 'START'
 
 
 def handle_users_reply(update: Update, context: CallbackContext) -> None:
