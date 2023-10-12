@@ -28,17 +28,18 @@ def get_database_connection() -> Redis:
     return _database
 
 
-def get_products(page=1, page_size=10):
-    crm_api_url = 'http://localhost:1337/api/products'
-    params = {
-        'pagination[page]': page,
-        'pagination[pageSize]': page_size,
-    }
-    response = requests.get(crm_api_url, params=params)
-    return (
-            json.loads(response.text)['data'],
-            json.loads(response.text)['meta']['pagination']['pageCount']
-        )
+def get_response_from_strapi(page=1, page_size=10, product_id=None):
+    base_url = 'http://localhost:1337/api/products/'
+    if product_id:
+        response = requests.get(base_url + str(product_id))
+    else:
+        params = {
+            'pagination[page]': page,
+            'pagination[pageSize]': page_size,
+        }
+        response = requests.get(base_url, params=params)
+    
+    return json.loads(response.text)
 
 
 def start(update: Update, context: CallbackContext) -> str:
@@ -59,17 +60,18 @@ def start(update: Update, context: CallbackContext) -> str:
     return 'HANDLE_MENU'
 
 
-def button(update: Update, context: CallbackContext) -> str:
-    query = update.callback_query
-    query.answer()
-    query.edit_message_text(text=f"Selected option: {query.data}")
-    return 'START'
+# def handle_menu(update: Update, context: CallbackContext) -> str:
+#     query = update.callback_query
+#     query.answer()
+#     user_selection = query.data
+#     query.edit_message_text(text=f"Selected option: {query.data}")
+#     return 'START'
 
 
 def handle_users_reply(update: Update, context: CallbackContext) -> None:
     state_functions: dict = {
         'START': start,
-        'BUTTON': button,
+        'HANDLE_MENU': handle_menu,
     }
 
     db: Redis = get_database_connection()
