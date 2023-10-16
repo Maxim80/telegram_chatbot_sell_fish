@@ -28,29 +28,27 @@ def get_database_connection() -> Redis:
     return _database
 
 
-def get_response_from_strapi(page=1, page_size=10, product_id=None):
-    base_url = 'http://localhost:1337/api/products/'
-    if product_id:
-        response = requests.get(base_url + str(product_id))
-    else:
-        params = {
-            'pagination[page]': page,
-            'pagination[pageSize]': page_size,
-        }
-        response = requests.get(base_url, params=params)
-    
-    return json.loads(response.text)
+def get_response_from_strapi(url, params=None):
+    base_url = 'http://localhost:1337'
+    response = requests.get(base_url + url, params=params)
+    response.raise_for_status()
+    return response.content
 
 
 def start(update: Update, context: CallbackContext) -> str:
-    products_info = get_response_from_strapi()
+    params = {
+        'pagination[page]': 1,
+        'pagination[pageSize]': 10,
+    }
+    products_url = '/api/products/'
+    products_info = json.loads(get_response_from_strapi(products_url, params))
     products = products_info['data']
     page = products_info['meta']['pagination']['page']
-    page_count = page = products_info['meta']['pagination']['pageCount']
+    page_count = products_info['meta']['pagination']['pageCount']
     while page_count - 1 > 0:
-        page += 1
+        params['pagination[page]'] += 1
         page_count -= 1
-        products.extend(get_response_from_strapi(page=page)['data'])
+        products.extend(json.loads(get_response_from_strapi(products_url, params))['data'])
 
     keyboard = [
         [InlineKeyboardButton(product['attributes']['title'], callback_data=product['id'])]
@@ -65,8 +63,20 @@ def start(update: Update, context: CallbackContext) -> str:
 def handle_menu(update: Update, context: CallbackContext) -> str:
     query = update.callback_query
     query.answer()
-    user_selection = query.data
-    query.edit_message_text(text=f"Selected option: {query.data}")
+    product_id = query.data
+    product_url = f'/api/products/{product_id}'
+    params = {
+        'populate[0]': 'picture',
+    }
+    product = json.loads(get_response_from_strapi(product_url, params))
+    product_title = product['data']['attributes']['title']
+    product_description = product['data']['attributes']['description']
+    product_price = product['data']['attributes']['price']
+    picture_url = product['data']['attributes']['picture']['data'][0]['attributes']['formats']['medium']['url']
+    picture = get_response_from_strapi(picture_url)
+    caption = f'{product_title} ({product_price} руб. за кг)\n\n{product_description}'
+    chat_id = query.message.chat_id
+    query.bot.send_photo(chat_id, picture, caption=caption)
     return 'START'
 
 
