@@ -51,16 +51,17 @@ def start(update: Update, context: CallbackContext) -> str:
         products.extend(json.loads(get_response_from_strapi(products_url, params))['data'])
 
     keyboard = [
-        [InlineKeyboardButton(product['attributes']['title'], callback_data=product['id'])]
+        [InlineKeyboardButton(text=product['attributes']['title'], callback_data=product['id'])]
         for product in products
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
+
     update.message.reply_text('Please choose:', reply_markup=reply_markup)
     return 'HANDLE_MENU'
 
 
-def handle_menu(update: Update, context: CallbackContext) -> str:
+def handler_menu(update: Update, context: CallbackContext) -> str:
     query = update.callback_query
     query.answer()
     product_id = query.data
@@ -76,14 +77,32 @@ def handle_menu(update: Update, context: CallbackContext) -> str:
     picture = get_response_from_strapi(picture_url)
     caption = f'{product_title} ({product_price} руб. за кг)\n\n{product_description}'
     chat_id = query.message.chat_id
-    query.bot.send_photo(chat_id, picture, caption=caption)
-    return 'START'
+    
+    keyboard = [
+        [InlineKeyboardButton(text='Назад', callback_data='123')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    query.bot.send_photo(chat_id=chat_id, photo=picture, caption=caption, reply_markup=reply_markup)
+
+    previous_message_id = query.message.message_id
+    query.bot.delete_message(chat_id=chat_id, message_id=previous_message_id)
+    return 'HANDLE_DESCRIPTION'
 
 
-def handle_users_reply(update: Update, context: CallbackContext) -> None:
+def handler_description(update: Update, context: CallbackContext) -> str:
+    query = update.callback_query
+    chat_id = query.message.chat_id
+    message_id = query.message.message_id
+    query.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    return start(query, context)
+    
+
+def handler_users_reply(update: Update, context: CallbackContext) -> None:
     state_functions: dict = {
         'START': start,
-        'HANDLE_MENU': handle_menu,
+        'HANDLE_MENU': handler_menu,
+        'HANDLE_DESCRIPTION': handler_description,
     }
 
     db: Redis = get_database_connection()
@@ -110,9 +129,9 @@ def main() -> None:
 
     updater: Updater = Updater(telegram_token)
     dispatcher: Dispatcher = updater.dispatcher
-    dispatcher.add_handler(CallbackQueryHandler(handle_users_reply))
-    dispatcher.add_handler(MessageHandler(Filters.text, handle_users_reply))
-    dispatcher.add_handler(CommandHandler('start', handle_users_reply))
+    dispatcher.add_handler(CallbackQueryHandler(handler_users_reply))
+    dispatcher.add_handler(MessageHandler(Filters.text, handler_users_reply))
+    dispatcher.add_handler(CommandHandler('start', handler_users_reply))
 
     updater.start_polling()
     updater.idle()
