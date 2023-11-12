@@ -8,9 +8,7 @@ from dotenv import dotenv_values
 from redis import Redis
 from collections import OrderedDict
 from typing import Optional
-import requests
-import json
-import os
+import api
 
 
 _database: Optional[Redis] = None
@@ -28,27 +26,8 @@ def get_database_connection() -> Redis:
     return _database
 
 
-def get_response_from_strapi(url, params=None):
-    base_url = 'http://localhost:1337'
-    response = requests.get(base_url + url, params=params)
-    response.raise_for_status()
-    return response.content
-
-
 def start(update: Update, context: CallbackContext) -> str:
-    params = {
-        'pagination[page]': 1,
-        'pagination[pageSize]': 10,
-    }
-    products_url = '/api/products/'
-    products_info = json.loads(get_response_from_strapi(products_url, params))
-    products = products_info['data']
-    page = products_info['meta']['pagination']['page']
-    page_count = products_info['meta']['pagination']['pageCount']
-    while page_count - 1 > 0:
-        params['pagination[page]'] += 1
-        page_count -= 1
-        products.extend(json.loads(get_response_from_strapi(products_url, params))['data'])
+    products = api.get_products()
 
     keyboard = [
         [InlineKeyboardButton(text=product['attributes']['title'], callback_data=product['id'])]
@@ -65,21 +44,14 @@ def handler_menu(update: Update, context: CallbackContext) -> str:
     query = update.callback_query
     query.answer()
     product_id = query.data
-    product_url = f'/api/products/{product_id}'
-    params = {
-        'populate[0]': 'picture',
-    }
-    product = json.loads(get_response_from_strapi(product_url, params))
-    product_title = product['data']['attributes']['title']
-    product_description = product['data']['attributes']['description']
-    product_price = product['data']['attributes']['price']
-    picture_url = product['data']['attributes']['picture']['data'][0]['attributes']['formats']['medium']['url']
-    picture = get_response_from_strapi(picture_url)
-    caption = f'{product_title} ({product_price} руб. за кг)\n\n{product_description}'
     chat_id = query.message.chat_id
+   
+    title, description, price, picture = api.get_product_info(product_id)
+    caption = f'{title} ({price} руб. за кг)\n\n{description}'
     
     keyboard = [
-        [InlineKeyboardButton(text='Назад', callback_data='123')]
+        [InlineKeyboardButton(text='Назад', callback_data='back')],
+        [InlineKeyboardButton(text='Добавить в корзину', callback_data='cart')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -94,6 +66,12 @@ def handler_description(update: Update, context: CallbackContext) -> str:
     query = update.callback_query
     chat_id = query.message.chat_id
     message_id = query.message.message_id
+    if query.data == 'cart':
+        tg_id = str(query.from_user.id)
+        cart = api.get_cart(tg_id)
+        if not cart['data']:
+            cart = api.create_cart(tg_id)
+            print(cart)
     query.bot.delete_message(chat_id=chat_id, message_id=message_id)
     return start(query, context)
     
