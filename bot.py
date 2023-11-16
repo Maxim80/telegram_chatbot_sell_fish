@@ -51,7 +51,7 @@ def handler_menu(update: Update, context: CallbackContext) -> str:
     
     keyboard = [
         [InlineKeyboardButton(text='Назад', callback_data='back')],
-        [InlineKeyboardButton(text='Добавить в корзину', callback_data='cart')]
+        [InlineKeyboardButton(text='Добавить в корзину', callback_data=product_id)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -66,12 +66,15 @@ def handler_description(update: Update, context: CallbackContext) -> str:
     query = update.callback_query
     chat_id = query.message.chat_id
     message_id = query.message.message_id
-    if query.data == 'cart':
-        tg_id = str(query.from_user.id)
+    if query.data != 'back':
+        tg_id = query.from_user.id
         cart = api.get_cart(tg_id)
         if not cart['data']:
             cart = api.create_cart(tg_id)
-            print(cart)
+        
+        product_id = query.data
+        cart_id = cart['data']['id']
+        cart_product = api.create_cart_product(product_id, cart_id)
     query.bot.delete_message(chat_id=chat_id, message_id=message_id)
     return start(query, context)
     

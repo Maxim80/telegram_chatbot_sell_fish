@@ -71,6 +71,18 @@ def get_cart(tg_id):
     response = _get_response(url, 'get', params=params)
     return json.loads(response)
 
+def create_cart_product(product_id, cart_id, quantity=1):
+    url = '/api/cart-products'
+    data = {
+        'data': {
+            'quantity': quantity,
+            'products': product_id,
+            'cart': cart_id,
+        }
+    }
+    response = _get_response(url, 'post', data=data)
+    return json.loads(response)
+
 
 if __name__ == '__main__':
-    print(get_cart(8177178))
+    pass
