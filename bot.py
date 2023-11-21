@@ -30,9 +30,13 @@ def start(update: Update, context: CallbackContext) -> str:
     products = api.get_products()
 
     keyboard = [
-        [InlineKeyboardButton(text=product['attributes']['title'], callback_data=product['id'])]
+        [InlineKeyboardButton(text=product.title, callback_data=product.id)]
         for product in products
     ]
+
+    keyboard.append(
+        [InlineKeyboardButton(text='Моя корзина', callback_data='cart')],
+    )
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -45,13 +49,17 @@ def handler_menu(update: Update, context: CallbackContext) -> str:
     query.answer()
     product_id = query.data
     chat_id = query.message.chat_id
+
+    product = api.get_product(product_id)
+    picture_url = product.picture_url
+    picture = api.get_picture(picture_url)
    
-    title, description, price, picture = api.get_product_info(product_id)
-    caption = f'{title} ({price} руб. за кг)\n\n{description}'
+    caption = f'{product.title} ({product.price} руб. за кг)\n\n{product.description}'
     
     keyboard = [
         [InlineKeyboardButton(text='Назад', callback_data='back')],
-        [InlineKeyboardButton(text='Добавить в корзину', callback_data=product_id)]
+        [InlineKeyboardButton(text='Добавить в корзину', callback_data=product_id)],
+        [InlineKeyboardButton(text='Моя корзина', callback_data='cart')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -66,17 +74,42 @@ def handler_description(update: Update, context: CallbackContext) -> str:
     query = update.callback_query
     chat_id = query.message.chat_id
     message_id = query.message.message_id
-    if query.data != 'back':
-        tg_id = query.from_user.id
+    tg_id = query.from_user.id
+    if query.data == 'back':
+        query.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        return start(query, context)
+
+    if query.data == 'cart':
+        cart_contents = api.get_cart_contents(tg_id)
+        if not cart_contents:
+            text='В вашей корзине пусто'
+        else:
+            text = ''
+            for content_item in cart_contents:
+                product_id = content_item['id']
+                product_quantity = content_item['attributes']['quantity']
+                product_detail = api.get_product(product_id)
+                product_title = product_detail['data']['attributes']['title']
+                product_price = product['data']['attributes']['price']
+                text += f'{product_title} {product_price} руб {product_quantity}.\n'
+
+        query.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        query.message.reply_text(text=text)
+        return 'HANDLE_CART'
+    else:
         cart = api.get_cart(tg_id)
         if not cart['data']:
             cart = api.create_cart(tg_id)
         
         product_id = query.data
         cart_id = cart['data']['id']
-        cart_product = api.create_cart_product(product_id, cart_id)
+        cart_product = api.add_product_in_cart(product_id, cart_id)
     query.bot.delete_message(chat_id=chat_id, message_id=message_id)
     return start(query, context)
+
+
+def handler_cart():
+    pass
     
 
 def handler_users_reply(update: Update, context: CallbackContext) -> None:
@@ -84,6 +117,7 @@ def handler_users_reply(update: Update, context: CallbackContext) -> None:
         'START': start,
         'HANDLE_MENU': handler_menu,
         'HANDLE_DESCRIPTION': handler_description,
+        'HANDLE_CART': None,
     }
 
     db: Redis = get_database_connection()

@@ -1,6 +1,17 @@
 from dotenv import dotenv_values
+from collections import namedtuple
 import requests
 import json
+import pprint
+
+
+Product = namedtuple('Product', [
+    'id',
+    'title',
+    'description',
+    'price',
+    'picture_url',
+])
 
 
 def _get_response(url, method, params=None, data=None):
@@ -18,38 +29,56 @@ def _get_response(url, method, params=None, data=None):
     return response.content
 
 
-def get_products():
+def get_products(page=1, page_size=10):
     url = '/api/products/'
     params = {
-        'pagination[page]': 1,
-        'pagination[pageSize]': 10,
+        'pagination[page]': page,
+        'pagination[pageSize]': page_size,
+        'fields[0]': 'title',
     }
 
     response = json.loads(_get_response(url, 'get', params=params))
-    products = response['data']
     page = response['meta']['pagination']['page']
     page_count = response['meta']['pagination']['pageCount']
     while page_count - 1 > 0:
         params['pagination[page]'] += 1
         page_count -= 1
-        response = json.loads(_get_response(url, 'get', params=params))
-        products.extend(response['data'])
+        response['data'].extend(json.loads(_get_response(url, 'get', params=params))['data'])
+    
+    products = [Product(
+                    item.get('id', None),
+                    item['attributes'].get('title', None),
+                    item['attributes'].get('description', None),
+                    item['attributes'].get('price', None),
+                    item['attributes'].get('picture_url', None),
+                ) for item in response['data']]
     
     return products
 
 
-def get_product_info(product_id):
+def get_product(product_id):
     url = f'/api/products/{product_id}'
     params = {
-        'populate[0]': 'picture',
+        'fields[0]': 'title',
+        'fields[1]': 'description',
+        'fields[2]': 'price',
+        'populate[picture][fields][0]': 'url',
     }
-    product = json.loads(_get_response(url, 'get', params=params))
-    title = product['data']['attributes']['title']
-    description = product['data']['attributes']['description']
-    price = product['data']['attributes']['price']
-    picture_url = product['data']['attributes']['picture']['data'][0]['attributes']['formats']['medium']['url']
+
+    response = json.loads(_get_response(url, 'get', params=params))
+    product = Product(
+        response['data']['id'],
+        response['data']['attributes']['title'],
+        response['data']['attributes']['description'],
+        response['data']['attributes']['price'],
+        response['data']['attributes']['picture']['data'][0]['attributes']['url']
+    )
+    return product
+
+
+def get_picture(picture_url):
     picture = _get_response(picture_url, 'get')
-    return (title, description, price, picture)
+    return picture
 
 
 def create_cart(tg_id):
@@ -59,30 +88,28 @@ def create_cart(tg_id):
             'tg_id': str(tg_id),
         },
     }
-    response = _get_response(url, 'post', data=data)
-    return json.loads(response)
+
+    cart = json.loads(_get_response(url, 'post', data=data))
+    return cart
 
 
 def get_cart(tg_id):
     url = '/api/carts'
     params = {
         'filters[tg_id][$eq]': tg_id,
-    }
-    response = _get_response(url, 'get', params=params)
-    return json.loads(response)
+        # 'populate[0]': 'cart_products',
+        'populate[cart_products][populate][0]': 'products',
+     }
 
-def create_cart_product(product_id, cart_id, quantity=1):
-    url = '/api/cart-products'
-    data = {
-        'data': {
-            'quantity': quantity,
-            'products': product_id,
-            'cart': cart_id,
-        }
-    }
-    response = _get_response(url, 'post', data=data)
-    return json.loads(response)
+    cart = json.loads(_get_response(url, 'get', params=params))
+    return cart
+
+
+def get_cart_contents(tg_id):
+    cart = get_cart(tg_id)
+    cart_products = cart['data'][0]['attributes']['cart_products']['data']
+    return cart_products
 
 
 if __name__ == '__main__':
-    pass
+    pprint.pprint(get_products(1, 2))
